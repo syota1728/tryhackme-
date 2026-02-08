@@ -1,9 +1,13 @@
 # Linuxのシステム強化
-Linuxのシステム強化技術について、その技術とコマンドの使い方などについて記述する。
+Linuxのシステム強化技術について、その技術とコマンドの使い方などについて備忘録として記述する。    
+> 情報源：TryHackMe [***Linux System Hardening***](https://tryhackme.com/room/linuxsystemhardening)
 
 ## 目次
 - [物理セキュリティ(GRUB)](#物理セキュリティgrub)
 - [ファイルシステムのパーティション分割と暗号化](#ファイルシステムのパーティション分割と暗号化)
+- [リモートアクセス](#リモートアクセス)
+- [ユーザアカウントの保護](#ユーザアカウントの保護)
+- [監査とログ](#監査とログ)
 
 ## 物理セキュリティ(GRUB)
 Linuxのブートローダーの一つ  
@@ -161,4 +165,94 @@ Uncomplicated Firewall　その名の通り設定を簡素化することがで�
 
 もっと詳しく[<u>Firewall</u>](https://tryhackme.com/room/redteamfirewalls)について学びたくなったとき
 
+<br>
 
+## リモートアクセス
+システムへのリモートアクセスの提供 → 物理的にいない場合でもシステムやファイルにアクセスできる  
+ ⇔ 一方で、攻撃者が攻撃しやすい要因にもなる  
+1. パスワードスニッフィング  
+Telnetプロトロコルなどで通信が平文で送信されることで、パケットキャプチャで傍受できる。  
+解決法：SSHサーバで通信を暗号化
+
+2. パスワード推測とブルートフォース攻撃  
+覚えやすさや入力の手間を省くために、脆弱なパスワードを設定しやすい。  
+解決法：複雑なパスワードに設定? ← 現実的ではない  
+
+~~パスワード認証~~  〇公開認証キー　
+
+### 設定方法
+OpenSSHサーバの設定は、sshd_configファイルで設定できる
+
+> /etc/ssh/sshd_config  
+- 「PermitRootLogin no」：rootログインを無効にすることができる
+- 「PubkeyAuthentication yes」：公開鍵認証を有効にする
+- 「PasswordAuthentication no」：パスワード認証を無効にする
+
+> ssh-keygen -t rsa
+- SSHキーペアを作成する
+> ssh-copy-id username@server
+- SSHサーバが公開鍵認証を行うには、公開鍵をSSHサーバにコピーする必要がある
+<br><br>
+
+## ユーザアカウントの保護
+root権限 = なんでもできる　日常的な作業では非rootアカウントの使用が良い
+
+rootログインを避ける良い方法　「sudo」
+
+「sudoers」というsudoグループに所属することで、rootログインできる<u>権利</u>が得られる  
+下記のコードでusernameをsudoersに追加できる。
+> usermod -aG sudo username
+- usermod：ユーザアカウントを変更
+>deluser username sudo
+- sudoersからユーザを削除する。不必要なユーザは削除するべき
+
+### ルートを無効にする
+管理目的でアカウントを作成し、sudo/wheelグループに追加したら、rootアカウントの無効化を検討
+
+簡単な方法  
+「/etc/pass」を編集して、rootシェルを「/sbin/nologin」に変更
+
+「root:x:0:0:root:/root:<u>/bin/bash</u>」  
+    ↓  
+「root:x:0:0:root:/root:<u>/sbin/nologin</u>」
+
+<mark>直接編集は注意：構文ミスでログイン不能などが起こり得るから</mark>
+
+現代Linuxでの推奨方法
+1. rootログインをロック
+> sudo passwd -l root
+2. SSHでroot禁止
+> /etc/ssh/sshd_config  
+PermitRootLogin no
+
+
+### 強力なパスワードポリシーを適用する
+***Libpwquality***ライブラリは、パスワード制約に関する多くのオプションを提供。
+
+RedHat / Fedora
+> /etc/security/pwquality.conf
+Debian / Ubuntu
+>/etc/pam.d/common-password
+
+オプション：
+- `difok`：古いパスワードに使われていなかった文字数を新しいパスワードに指定できる
+- `minlen`：パスワードの最小文字数を指定する
+- `minclass`：必要な文字クラス(大文字、小文字、記号、数字)の最小数を指定。
+- `badwords`：パスワードに使えない文字を指定する
+- `retry=N`：エラーを返す前に、N回試すことができる
+
+**rootユーザに限らず、利用しなくなったユーザは無効化する！**
+
+<br>
+
+## 監査とログ
+Linuxシステムのほとんどのログファイルは`/var/log`ディレクトリに保存
+
+監査ログの種類
+- `/var/log/messages`：Linuxシステムの一般的なログ
+- `/var/log/auth.log`：すべての認証試行をリストするログファイル(Debianベース)
+- `/var/log/secure`：すべての認証試行をリストするログファイル(Red Hat/Federeベース)
+- `/var/log/utmp`：現在システムにログインしているユーザに関する情報を含むアクセスログ
+- `/var/log/wtmp`：システムにログイン及びログアウトしたすべてのユーザの情報を含むアクセスログ
+- `/var/log/kern.log`：カーネルからのメッセージを含むログファイル
+- `/var/log/boot.log`：起動メッセージとブート情報を含むログファイル
